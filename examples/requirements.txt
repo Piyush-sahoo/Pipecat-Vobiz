@@ -1,0 +1,15 @@
+# Pipecat AI with required features
+pipecat-ai[websocket,openai,silero]>=0.0.86
+
+# Web framework
+fastapi
+uvicorn
+
+# HTTP client
+aiohttp
+
+# Environment variables
+python-dotenv
+
+# Logging
+loguru
