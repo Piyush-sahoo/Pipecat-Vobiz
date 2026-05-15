@@ -53,6 +53,29 @@ transport = FastAPIWebsocketTransport(
 )
 ```
 
+### pipecat-ai 1.x: VAD wiring
+
+In **pipecat-ai 1.x**, `vad_analyzer` on `FastAPIWebsocketParams` is silently
+a no-op — VAD is now configured on the user-aggregator. If you pass it to
+the transport, the call will connect but the bot will never see speech-start
+events, so STT never fires and you'll hear silence.
+
+```python
+from pipecat.audio.vad.silero import SileroVADAnalyzer
+from pipecat.processors.aggregators.llm_response_universal import (
+    LLMContextAggregatorPair,
+    LLMUserAggregatorParams,
+)
+
+context_aggregator = LLMContextAggregatorPair(
+    context,
+    user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
+)
+```
+
+For pipecat-ai 0.x the legacy transport-side `vad_analyzer=SileroVADAnalyzer()`
+still works.
+
 ## Features
 
 - Audio streaming in **`audio/x-mulaw`** or **`audio/x-l16`** at
