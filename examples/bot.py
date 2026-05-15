@@ -116,7 +116,7 @@ async def bot(runner_args: RunnerArguments):
             audio_in_enabled=True,
             audio_out_enabled=True,
             add_wav_header=False,  # CRITICAL: Must be False for telephony
-            serializer=serializer,  # (Vobiz is Plivo-compatible)
+            serializer=serializer,
             vad_analyzer=SileroVADAnalyzer(),
         ),
     )

@@ -157,14 +157,20 @@ def get_host_and_protocol(request: Request = None):
 
 
 def get_websocket_url(host: str):
-    """Construct WebSocket URL for Vobiz Stream XML.
-
-    """
+    """Construct WebSocket URL for Vobiz Stream XML."""
     env = os.getenv("ENV", "local").lower()
 
     if env == "production":
-        # For production, use Pipecat Cloud WebSocket URL (Plivo endpoint works for Vobiz)
-        return "wss://api.pipecat.daily.co/ws/plivo"
+        # Production WebSocket endpoint, configured via env var. Set this to
+        # the public wss:// URL where your bot is reachable (e.g. a Pipecat
+        # Cloud agent endpoint or your own deployment).
+        prod_ws_url = os.getenv("VOBIZ_PROD_WS_URL")
+        if not prod_ws_url:
+            raise ValueError(
+                "ENV=production but VOBIZ_PROD_WS_URL is not set. "
+                "Set it to the wss:// URL where your bot is hosted."
+            )
+        return prod_ws_url
     else:
         # Return WebSocket URL for local/ngrok deployment
         return f"wss://{host}/ws"

@@ -17,18 +17,28 @@ pip install git+https://github.com/Piyush-sahoo/Pipecat-Vobiz.git
 ## Usage
 
 ```python
-from pipecat.serializers.vobiz import VobizFrameSerializer
+from pipecat.serializers.vobiz import VobizFrameSerializer, parse_vobiz_start
 from pipecat.transports.network.fastapi_websocket import (
     FastAPIWebsocketTransport,
     FastAPIWebsocketParams,
 )
 
-# Create the serializer with your Vobiz credentials
+# Read Vobiz's `start` event off the WebSocket to learn the negotiated
+# wire format (encoding + sample rate + stream/call IDs).
+parsed = await parse_vobiz_start(websocket)
+
+# Create the serializer using the wire format Vobiz actually negotiated.
 serializer = VobizFrameSerializer(
-    stream_id=stream_id,
-    call_id=call_id,
+    stream_id=parsed["stream_id"],
+    call_id=parsed["call_id"],
     auth_id="YOUR_VOBIZ_AUTH_ID",
     auth_token="YOUR_VOBIZ_AUTH_TOKEN",
+    params=VobizFrameSerializer.InputParams(
+        encoding=parsed["encoding"] or "audio/x-mulaw",
+        vobiz_sample_rate=parsed["sample_rate"] or 8000,
+        # l16_byte_order="le",     # if your account transports L16 LE
+        # hangup_method="both",    # default; "ws_stop" or "rest" also valid
+    ),
 )
 
 # Use it with the FastAPI WebSocket transport
@@ -45,10 +55,18 @@ transport = FastAPIWebsocketTransport(
 
 ## Features
 
-- 8kHz μ-law audio streaming
-- DTMF event handling
-- Automatic call termination on pipeline end
-- Compatible with Pipecat's pipeline architecture
+- Audio streaming in **`audio/x-mulaw`** or **`audio/x-l16`** at
+  **8000 / 16000 Hz** (24000 Hz is in the protocol but not reliable on
+  all regions — see CHANGELOG).
+- Self-negotiation from Vobiz's `start` event — adopts the encoding and
+  sample rate Vobiz actually declares on the wire, with a warning if it
+  disagrees with your config.
+- DTMF event handling.
+- Barge-in via Pipecat's `InterruptionFrame` → Vobiz `clearAudio`.
+- Reliable call termination: sends Vobiz's documented `stop` event on
+  the WebSocket **and** issues a REST `DELETE` as a background safety
+  net (configurable via `hangup_method`).
+- Compatible with Pipecat's pipeline architecture.
 
 ## Example
 
