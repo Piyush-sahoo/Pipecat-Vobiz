@@ -124,10 +124,6 @@ class TestConstructor(unittest.TestCase):
                     stream_id=STREAM_ID, params=_params(encoding=encoding, vobiz_sample_rate=rate)
                 )
 
-    def test_rejects_unknown_byte_order(self):
-        with self.assertRaises(ValueError):
-            VobizFrameSerializer(stream_id=STREAM_ID, params=_params(l16_byte_order="middle"))
-
 
 class TestSerialize(unittest.IsolatedAsyncioTestCase):
     async def _serializer(self, rate: int = 8000, **params) -> VobizFrameSerializer:
@@ -151,20 +147,38 @@ class TestSerialize(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(message["media"]["sampleRate"], 8000)
         self.assertEqual(len(base64.b64decode(message["media"]["payload"])), 160)
 
-    async def test_l16_uses_configured_byte_order_on_the_wire(self):
-        pcm = array.array("h", [0x0102] * 160).tobytes()
-        little = b"\x02\x01" * 160
-        big = b"\x01\x02" * 160
-        for order, expected in (("le", little), ("be", big)):
-            with self.subTest(order=order):
-                serializer = await self._serializer(encoding="audio/x-l16", l16_byte_order=order)
+    async def test_l16_is_little_endian_on_the_wire(self):
+        serializer = await self._serializer(encoding="audio/x-l16")
+        pcm = (0x0102).to_bytes(2, "little") * 160
+        message = json.loads(
+            await serializer.serialize(
+                OutputAudioRawFrame(audio=pcm, sample_rate=8000, num_channels=1)
+            )
+        )
+        self.assertEqual(message["media"]["contentType"], "audio/x-l16")
+        self.assertEqual(base64.b64decode(message["media"]["payload"]), b"\x02\x01" * 160)
+
+    async def test_outbound_formats_are_independent_of_inbound(self):
+        for encoding, rate, size in (
+            ("audio/x-mulaw", 8000, 160),
+            ("audio/x-l16", 8000, 320),
+            ("audio/x-l16", 16000, 640),
+            ("audio/x-l16", 24000, 960),
+        ):
+            with self.subTest(encoding=encoding, rate=rate):
+                serializer = await self._serializer(
+                    output_encoding=encoding, output_sample_rate=rate
+                )
                 message = json.loads(
                     await serializer.serialize(
-                        OutputAudioRawFrame(audio=pcm, sample_rate=8000, num_channels=1)
+                        OutputAudioRawFrame(
+                            audio=b"\x00\x10" * int(rate * 0.02), sample_rate=rate, num_channels=1
+                        )
                     )
                 )
-                self.assertEqual(message["media"]["contentType"], "audio/x-l16")
-                self.assertEqual(base64.b64decode(message["media"]["payload"]), expected)
+                self.assertEqual(message["media"]["contentType"], encoding)
+                self.assertEqual(message["media"]["sampleRate"], rate)
+                self.assertEqual(len(base64.b64decode(message["media"]["payload"])), size)
 
     async def test_interruption_becomes_clear_audio(self):
         serializer = await self._serializer()
@@ -201,14 +215,12 @@ class TestDeserialize(unittest.IsolatedAsyncioTestCase):
         self.assertEqual((frame.sample_rate, frame.num_channels), (8000, 1))
         self.assertEqual(len(frame.audio), 320)
 
-    async def test_l16_is_converted_to_native_byte_order(self):
-        wire_values = {"le": b"\x02\x01" * 160, "be": b"\x01\x02" * 160}
-        expected = array.array("h", [0x0102] * 160).tobytes()
-        for order, wire in wire_values.items():
-            with self.subTest(order=order):
-                serializer = await self._serializer(encoding="audio/x-l16", l16_byte_order=order)
-                frame = await serializer.deserialize(_media(wire))
-                self.assertEqual(frame.audio, expected)
+    async def test_l16_media_becomes_input_audio(self):
+        for rate, size in ((8000, 320), (16000, 640)):
+            with self.subTest(rate=rate):
+                serializer = await self._serializer(rate, encoding="audio/x-l16")
+                frame = await serializer.deserialize(_media(b"\x10\x00" * (size // 2)))
+                self.assertEqual((frame.sample_rate, len(frame.audio)), (rate, size))
 
     async def test_dtmf_digit_becomes_input_dtmf(self):
         serializer = await self._serializer()

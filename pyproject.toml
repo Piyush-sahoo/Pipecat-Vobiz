@@ -29,9 +29,9 @@ example = ["pipecat-ai[deepgram,google,silero,websocket]>=1.12.0,<2", "python-do
 
 [project.urls]
 Homepage = "https://www.vobiz.ai/docs/integrations/pipecat"
-Repository = "https://github.com/vobiz-ai/Pipecat-Vobiz"
-Issues = "https://github.com/vobiz-ai/Pipecat-Vobiz/issues"
-Changelog = "https://github.com/vobiz-ai/Pipecat-Vobiz/blob/main/CHANGELOG.md"
+Repository = "https://github.com/Piyush-sahoo/Pipecat-Vobiz"
+Issues = "https://github.com/Piyush-sahoo/Pipecat-Vobiz/issues"
+Changelog = "https://github.com/Piyush-sahoo/Pipecat-Vobiz/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/pipecat_vobiz", "src/pipecat"]

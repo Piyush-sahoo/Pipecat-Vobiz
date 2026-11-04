@@ -14,14 +14,16 @@ All notable changes to this project will be documented in this file.
   construction when `call_id`, `auth_id` or `auth_token` is missing.
 - `parse_vobiz_start` raises `ValueError` when the first message is not a valid
   `start` event, and no longer returns `raw`.
-- `l16_byte_order` defaults to `le`.
+- L16 audio is little-endian, confirmed on real calls. `l16_byte_order` is removed.
+- Inbound and outbound formats are set independently, with `output_encoding` and
+  `output_sample_rate`. L16 at 24000 Hz is supported outbound.
 - Requires `pipecat-ai>=1.12.0,<2` and Python 3.11 or newer.
 
 ### Removed
 
 - `InputParams.hangup_method`, and start-event format negotiation inside the
   serializer. Pass the values from `parse_vobiz_start` instead.
-- Formats Vobiz does not support inbound: μ-law at 16000 or 24000 Hz, and L16 at 24000 Hz.
+- Inbound formats Vobiz does not support: μ-law at 16000 or 24000 Hz, and L16 at 24000 Hz.
 - `examples/server.py`. [Vobiz-X-Pipecat](https://github.com/vobiz-ai/Vobiz-X-Pipecat)
   covers recording and transfers.
 

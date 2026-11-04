@@ -75,11 +75,14 @@ transport = FastAPIWebsocketTransport(
 
 | `InputParams` field | Default | Description |
 | --- | --- | --- |
-| `encoding` | `audio/x-mulaw` | Wire encoding: `audio/x-mulaw` or `audio/x-l16`. Must match the `<Stream>` `contentType`. |
-| `vobiz_sample_rate` | `8000` | μ-law supports 8000 Hz. L16 supports 8000 and 16000 Hz. |
+| `encoding` | `audio/x-mulaw` | Inbound encoding: `audio/x-mulaw` or `audio/x-l16`. Must match the `<Stream>` `contentType`. |
+| `vobiz_sample_rate` | `8000` | Inbound rate. μ-law supports 8000 Hz. L16 supports 8000 and 16000 Hz. |
+| `output_encoding` | inbound encoding | Outbound encoding, set independently of inbound. |
+| `output_sample_rate` | inbound rate | Outbound rate. L16 also supports 24000 Hz outbound. |
 | `sample_rate` | `None` | Overrides the pipeline input sample rate. |
-| `l16_byte_order` | `le` | Byte order of L16 audio on the wire: `le` or `be`. |
 | `auto_hang_up` | `True` | End the call on `EndFrame` or `CancelFrame`. |
+
+L16 audio is little-endian on the wire.
 
 `auto_hang_up` deletes the whole call. If your XML has a verb after `<Stream>`, such as `<Dial>` for a transfer, set `auto_hang_up=False` so that the verb can run.
 
@@ -109,7 +112,9 @@ For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.c
 
 ## Pipecat compatibility
 
-Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+Tested on real phone calls with Pipecat 1.15, across every inbound and outbound format above. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+
+DTMF digits sent through the Vobiz REST API did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
 
 ## Development
 
