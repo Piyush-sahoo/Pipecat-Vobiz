@@ -189,7 +189,10 @@ async def ws(websocket: WebSocket, token: str) -> None:
     else:
         stt = GeminiSTTService(api_key=KEY)
         llm = GoogleLLMService(
-            api_key=KEY, model=os.getenv("GEMINI_MODEL"), system_instruction=SYSTEM
+            api_key=KEY,
+            settings=GoogleLLMService.Settings(
+                model=os.getenv("GEMINI_MODEL"), system_instruction=SYSTEM
+            ),
         )
         tts = GeminiTTSService(
             api_key=KEY,

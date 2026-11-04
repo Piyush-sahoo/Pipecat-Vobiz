@@ -105,8 +105,10 @@ async def run_bot(websocket: WebSocket, start: dict) -> None:
     stt = GeminiSTTService(api_key=os.environ["GOOGLE_API_KEY"])
     llm = GoogleLLMService(
         api_key=os.environ["GOOGLE_API_KEY"],
-        model=os.getenv("GEMINI_MODEL"),
-        system_instruction=SYSTEM_INSTRUCTION,
+        settings=GoogleLLMService.Settings(
+            model=os.getenv("GEMINI_MODEL"),
+            system_instruction=SYSTEM_INSTRUCTION,
+        ),
     )
     tts = GeminiTTSService(
         api_key=os.environ["GOOGLE_API_KEY"],
