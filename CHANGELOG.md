@@ -2,13 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.1.0] - Unreleased
+## [0.1.0] - 2026-11-04
 
 ### Changed
 
 - Import from `pipecat_vobiz`. `pipecat.serializers.vobiz` still works, with a
   `DeprecationWarning`, and will be removed in a later release.
-- Aligned with Pipecat's Plivo and Twilio serializers: call
+- Aligned with Pipecat's built-in telephony serializers: call
   `FrameSerializer.__init__`, inherit its `InputParams`, and ignore RTVI messages.
 - `auto_hang_up` now ends calls with a REST `DELETE`, and raises `ValueError` at
   construction when `call_id`, `auth_id` or `auth_token` is missing.

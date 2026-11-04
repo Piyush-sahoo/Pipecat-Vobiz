@@ -2,7 +2,7 @@
 
 Connect a [Pipecat](https://github.com/pipecat-ai/pipecat) voice agent to phone calls on [Vobiz](https://www.vobiz.ai), a global telephony provider for voice AI.
 
-`VobizFrameSerializer` translates between Pipecat frames and the WebSocket protocol opened by the Vobiz [`<Stream>`](https://www.vobiz.ai/docs/xml/stream/initiate) XML verb. It follows the same structure as Pipecat's built-in Plivo and Twilio serializers.
+`VobizFrameSerializer` translates between Pipecat frames and the WebSocket protocol opened by the Vobiz [`<Stream>`](https://www.vobiz.ai/docs/xml/stream/initiate) XML verb. It follows the same structure as Pipecat's built-in telephony serializers.
 
 This integration is maintained by Vobiz.
 
@@ -67,7 +67,30 @@ transport = FastAPIWebsocketTransport(
 )
 ```
 
-[`examples/bot.py`](examples/bot.py) is a complete agent in one file.
+Run the transport in a pipeline at the sample rate from the `start` event:
+
+```python
+pipeline = Pipeline(
+    [
+        transport.input(),
+        stt,
+        user_aggregator,
+        llm,
+        tts,
+        transport.output(),
+        assistant_aggregator,
+    ]
+)
+worker = PipelineWorker(
+    pipeline,
+    params=PipelineParams(
+        audio_in_sample_rate=start["sample_rate"],
+        audio_out_sample_rate=start["sample_rate"],
+    ),
+)
+```
+
+[`examples/bot.py`](examples/bot.py) is the complete agent in one file, including `stt`, `llm`, `tts` and the aggregators.
 
 ## Configuration
 
@@ -112,7 +135,7 @@ For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.c
 
 ## Pipecat compatibility
 
-Tested on real phone calls with Pipecat 1.15, across every inbound and outbound format above. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+Tested with Pipecat v1.15.0. The serializer code ran on real phone calls in every inbound and outbound format above, with `auto_hang_up` off. `examples/bot.py` ran with real Deepgram and Gemini against a simulated Vobiz stream, not on a phone call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
 
 DTMF digits sent through the Vobiz REST API did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
 
