@@ -2,23 +2,33 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## [0.1.0] - Unreleased
 
-### Documentation
+### Changed
 
-- Tested against **pipecat-ai 1.2.0** in addition to the 0.0.x line.
-- `examples/bot.py` updated to the pipecat-ai 1.x pipeline pattern: VAD is
-  now wired on `LLMUserAggregatorParams(vad_analyzer=...)` instead of on
-  the transport's `FastAPIWebsocketParams.vad_analyzer` (which is a
-  silent no-op in 1.x — calls connect but no speech is ever detected,
-  STT never fires, bot stays silent). The serializer itself is unchanged
-  and compatible with both 0.x and 1.x.
-- README gained a "pipecat-ai 1.x: VAD wiring" subsection with a
-  side-by-side snippet of the right and wrong patterns, so people
-  porting from 0.x don't hit the same trap.
-- `examples/bot.py` now uses `parse_vobiz_start(websocket)` (added in
-  0.0.3) so the negotiated `mediaFormat` reaches the serializer instead
-  of being dropped by `parse_telephony_websocket`.
+- Import from `pipecat_vobiz`. `pipecat.serializers.vobiz` still works, with a
+  `DeprecationWarning`, and will be removed in a later release.
+- Aligned with Pipecat's Plivo and Twilio serializers: call
+  `FrameSerializer.__init__`, inherit its `InputParams`, and ignore RTVI messages.
+- `auto_hang_up` now ends calls with a REST `DELETE`, and raises `ValueError` at
+  construction when `call_id`, `auth_id` or `auth_token` is missing.
+- `parse_vobiz_start` raises `ValueError` when the first message is not a valid
+  `start` event, and no longer returns `raw`.
+- `l16_byte_order` defaults to `le`.
+- Requires `pipecat-ai>=1.12.0,<2` and Python 3.11 or newer.
+
+### Removed
+
+- `InputParams.hangup_method`, and start-event format negotiation inside the
+  serializer. Pass the values from `parse_vobiz_start` instead.
+- Formats Vobiz does not support inbound: μ-law at 16000 or 24000 Hz, and L16 at 24000 Hz.
+- `examples/server.py`. [Vobiz-X-Pipecat](https://github.com/vobiz-ai/Vobiz-X-Pipecat)
+  covers recording and transfers.
+
+### Added
+
+- A unit test suite, and CI on Pipecat 1.12.0 and 1.15.0.
+- A single-file example, `examples/bot.py`.
 
 ## [0.0.3] - 2026-05-15
 

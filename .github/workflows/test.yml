@@ -1,0 +1,25 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+        pipecat: ["1.12.0", "1.15.0"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: uv build --wheel
+      - run: uv venv
+      - run: uv pip install dist/*.whl "pipecat-ai==${{ matrix.pipecat }}" pytest ruff
+      - run: uv run --no-project ruff check src tests examples/bot.py
+      - run: uv run --no-project pytest -c /dev/null --rootdir=. tests

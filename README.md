@@ -1,104 +1,124 @@
-# Pipecat Vobiz Integration
+# pipecat-vobiz
 
-Community integration for using [Vobiz](https://vobiz.ai) telephony with [Pipecat](https://github.com/pipecat-ai/pipecat).
+Connect a [Pipecat](https://github.com/pipecat-ai/pipecat) voice agent to phone calls on [Vobiz](https://www.vobiz.ai), a global telephony provider for voice AI.
+
+`VobizFrameSerializer` translates between Pipecat frames and the WebSocket protocol opened by the Vobiz [`<Stream>`](https://www.vobiz.ai/docs/xml/stream/initiate) XML verb. It follows the same structure as Pipecat's built-in Plivo and Twilio serializers.
+
+This integration is maintained by Vobiz.
 
 ## Installation
 
 ```bash
-pip install pipecat-vobiz
+uv add pipecat-vobiz
 ```
 
-Or install from source:
+Or use `pip install pipecat-vobiz`.
 
-```bash
-pip install git+https://github.com/Piyush-sahoo/Pipecat-Vobiz.git
+## How it works
+
+```text
+Phone call <-> Vobiz <-> WebSocket <-> FastAPIWebsocketTransport + VobizFrameSerializer <-> your pipeline
 ```
+
+| Pipecat | Vobiz |
+| --- | --- |
+| `media` event | `InputAudioRawFrame` |
+| `OutputAudioRawFrame` | `playAudio` event |
+| `InterruptionFrame` | `clearAudio` event |
+| `EndFrame` or `CancelFrame` | REST `DELETE` on the call, when `auto_hang_up` is on |
 
 ## Usage
 
+Answer the call with XML that opens a bidirectional stream:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Stream bidirectional="true" keepCallAlive="true" contentType="audio/x-mulaw;rate=8000">wss://your-domain.com/ws/your-secret</Stream>
+</Response>
+```
+
+Then read the `start` event and give the serializer to the transport:
+
 ```python
-from pipecat.serializers.vobiz import VobizFrameSerializer, parse_vobiz_start
-from pipecat.transports.network.fastapi_websocket import (
-    FastAPIWebsocketTransport,
-    FastAPIWebsocketParams,
-)
+from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
+from pipecat_vobiz import VobizFrameSerializer, parse_vobiz_start
 
-# Read Vobiz's `start` event off the WebSocket to learn the negotiated
-# wire format (encoding + sample rate + stream/call IDs).
-parsed = await parse_vobiz_start(websocket)
+await websocket.accept()
+start = await parse_vobiz_start(websocket)
 
-# Create the serializer using the wire format Vobiz actually negotiated.
 serializer = VobizFrameSerializer(
-    stream_id=parsed["stream_id"],
-    call_id=parsed["call_id"],
-    auth_id="YOUR_VOBIZ_AUTH_ID",
-    auth_token="YOUR_VOBIZ_AUTH_TOKEN",
+    stream_id=start["stream_id"],
+    call_id=start["call_id"],
+    auth_id=os.environ["VOBIZ_AUTH_ID"],
+    auth_token=os.environ["VOBIZ_AUTH_TOKEN"],
     params=VobizFrameSerializer.InputParams(
-        encoding=parsed["encoding"] or "audio/x-mulaw",
-        vobiz_sample_rate=parsed["sample_rate"] or 8000,
-        # l16_byte_order="le",     # if your account transports L16 LE
-        # hangup_method="both",    # default; "ws_stop" or "rest" also valid
+        encoding=start["encoding"],
+        vobiz_sample_rate=start["sample_rate"],
     ),
 )
-
-# Use it with the FastAPI WebSocket transport
 transport = FastAPIWebsocketTransport(
     websocket=websocket,
     params=FastAPIWebsocketParams(
         audio_in_enabled=True,
         audio_out_enabled=True,
-        add_wav_header=False,
         serializer=serializer,
     ),
 )
 ```
 
-### pipecat-ai 1.x: VAD wiring
+[`examples/bot.py`](examples/bot.py) is a complete agent in one file.
 
-In **pipecat-ai 1.x**, `vad_analyzer` on `FastAPIWebsocketParams` is silently
-a no-op — VAD is now configured on the user-aggregator. If you pass it to
-the transport, the call will connect but the bot will never see speech-start
-events, so STT never fires and you'll hear silence.
+## Configuration
 
-```python
-from pipecat.audio.vad.silero import SileroVADAnalyzer
-from pipecat.processors.aggregators.llm_response_universal import (
-    LLMContextAggregatorPair,
-    LLMUserAggregatorParams,
-)
+`VobizFrameSerializer` takes `stream_id`, `call_id`, `auth_id`, `auth_token` and `params`. The three credentials are required while `auto_hang_up` is on.
 
-context_aggregator = LLMContextAggregatorPair(
-    context,
-    user_params=LLMUserAggregatorParams(vad_analyzer=SileroVADAnalyzer()),
-)
+| `InputParams` field | Default | Description |
+| --- | --- | --- |
+| `encoding` | `audio/x-mulaw` | Wire encoding: `audio/x-mulaw` or `audio/x-l16`. Must match the `<Stream>` `contentType`. |
+| `vobiz_sample_rate` | `8000` | μ-law supports 8000 Hz. L16 supports 8000 and 16000 Hz. |
+| `sample_rate` | `None` | Overrides the pipeline input sample rate. |
+| `l16_byte_order` | `le` | Byte order of L16 audio on the wire: `le` or `be`. |
+| `auto_hang_up` | `True` | End the call on `EndFrame` or `CancelFrame`. |
+
+`auto_hang_up` deletes the whole call. If your XML has a verb after `<Stream>`, such as `<Dial>` for a transfer, set `auto_hang_up=False` so that the verb can run.
+
+## Run the example
+
+You need a [Vobiz account](https://console.vobiz.ai) with a phone number, plus Deepgram and Google API keys.
+
+1. Install the dependencies and add your keys:
+
+   ```bash
+   uv pip install "pipecat-vobiz[example]"
+   cp examples/env.example .env
+   ```
+
+2. Start the bot, and expose port 8765 at a public HTTPS URL:
+
+   ```bash
+   python examples/bot.py
+   ngrok http 8765
+   ```
+
+3. In the Vobiz console, create an [application](https://www.vobiz.ai/docs/applications/create-application) with `https://<your-url>/answer` as its answer URL, and attach your number to it.
+
+4. Call the number.
+
+For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.com/vobiz-ai/Vobiz-X-Pipecat). The full setup guide is at [vobiz.ai/docs/integrations/pipecat](https://www.vobiz.ai/docs/integrations/pipecat).
+
+## Pipecat compatibility
+
+Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+
+## Development
+
+```bash
+uv pip install -e ".[dev]"
+pytest
+ruff check .
 ```
-
-For pipecat-ai 0.x the legacy transport-side `vad_analyzer=SileroVADAnalyzer()`
-still works.
-
-## Features
-
-- Audio streaming in **`audio/x-mulaw`** or **`audio/x-l16`** at
-  **8000 / 16000 Hz** (24000 Hz is in the protocol but not reliable on
-  all regions — see CHANGELOG).
-- Self-negotiation from Vobiz's `start` event — adopts the encoding and
-  sample rate Vobiz actually declares on the wire, with a warning if it
-  disagrees with your config.
-- DTMF event handling.
-- Barge-in via Pipecat's `InterruptionFrame` → Vobiz `clearAudio`.
-- Reliable call termination: sends Vobiz's documented `stop` event on
-  the WebSocket **and** issues a REST `DELETE` as a background safety
-  net (configurable via `hangup_method`).
-- Compatible with Pipecat's pipeline architecture.
-
-## Example
-
-See the [examples/bot.py](examples/bot.py) for a complete working example.
-
-## Pipecat Version Compatibility
-
-Tested with Pipecat v0.0.86+
 
 ## License
 
-BSD 2-Clause License
+BSD 2-Clause. See [LICENSE](LICENSE).
