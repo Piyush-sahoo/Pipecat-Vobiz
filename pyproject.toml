@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pipecat-vobiz"
-version = "0.1.0"
+version = "0.1.1"
 description = "Vobiz telephony serializer for Pipecat"
 readme = "README.md"
 authors = [{ name = "Vobiz", email = "support@vobiz.ai" }]

@@ -94,7 +94,7 @@ worker = PipelineWorker(
 
 ## Configuration
 
-`VobizFrameSerializer` takes `stream_id`, `call_id`, `auth_id`, `auth_token` and `params`. The three credentials are required while `auto_hang_up` is on.
+`VobizFrameSerializer` takes `stream_id`, `call_id`, `auth_id`, `auth_token` and `params`. `auto_hang_up` uses the call ID and the two credentials.
 
 | `InputParams` field | Default | Description |
 | --- | --- | --- |
@@ -111,7 +111,7 @@ L16 audio is little-endian on the wire.
 
 ## Run the example
 
-You need a [Vobiz account](https://console.vobiz.ai) with a phone number, plus a Google API key. The example uses Gemini for speech-to-text, the LLM and text-to-speech.
+The example uses Gemini for speech-to-text, the LLM and text-to-speech, on a [Vobiz](https://console.vobiz.ai) phone number.
 
 1. Install the dependencies and add your keys:
 
