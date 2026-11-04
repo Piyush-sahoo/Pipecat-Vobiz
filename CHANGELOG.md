@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Changed
+
+- `examples/bot.py` uses Gemini for speech-to-text, the LLM and text-to-speech, so it needs one API key.
+
 ## [0.1.0] - 2026-11-04
 
 ### Changed

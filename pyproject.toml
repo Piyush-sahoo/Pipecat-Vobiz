@@ -25,7 +25,7 @@ dependencies = ["pipecat-ai>=1.12.0,<2", "aiohttp>=3.8.0"]
 
 [project.optional-dependencies]
 dev = ["pytest>=8", "ruff>=0.8"]
-example = ["pipecat-ai[deepgram,google,silero,websocket]>=1.12.0,<2", "python-dotenv", "uvicorn"]
+example = ["pipecat-ai[google,silero,websocket]>=1.12.0,<2", "python-dotenv", "uvicorn"]
 
 [project.urls]
 Homepage = "https://www.vobiz.ai/docs/integrations/pipecat"

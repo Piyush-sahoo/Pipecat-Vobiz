@@ -111,7 +111,7 @@ L16 audio is little-endian on the wire.
 
 ## Run the example
 
-You need a [Vobiz account](https://console.vobiz.ai) with a phone number, plus Deepgram and Google API keys.
+You need a [Vobiz account](https://console.vobiz.ai) with a phone number, plus a Google API key. The example uses Gemini for speech-to-text, the LLM and text-to-speech.
 
 1. Install the dependencies and add your keys:
 
@@ -135,7 +135,7 @@ For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.c
 
 ## Pipecat compatibility
 
-Tested with Pipecat v1.15.0. This package ran on real phone calls in every inbound and outbound format above, including interruptions, and `auto_hang_up` ended live calls. `examples/bot.py` ran with real Deepgram and Gemini against a simulated Vobiz stream, not on a phone call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+Tested with Pipecat v1.15.0. This package ran on real phone calls in every inbound and outbound format above, with Gemini STT, LLM and TTS and with Gemini Live, including interruptions and `auto_hang_up`. `examples/bot.py` ran on a real μ-law call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
 
 DTMF digits sent through the Vobiz REST API and the `<DTMF>` XML element did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
 
