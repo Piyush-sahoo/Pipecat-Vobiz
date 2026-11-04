@@ -19,7 +19,7 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - run: uv build --wheel
-      - run: uv venv
+      - run: uv venv --clear
       - run: uv pip install dist/*.whl "pipecat-ai==${{ matrix.pipecat }}" pytest ruff
       - run: uv run --no-project ruff check src tests examples/bot.py
       - run: uv run --no-project pytest -c /dev/null --rootdir=. tests
