@@ -135,9 +135,9 @@ For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.c
 
 ## Pipecat compatibility
 
-Tested with Pipecat v1.15.0. The serializer code ran on real phone calls in every inbound and outbound format above, with `auto_hang_up` off. `examples/bot.py` ran with real Deepgram and Gemini against a simulated Vobiz stream, not on a phone call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
+Tested with Pipecat v1.15.0. This package ran on real phone calls in every inbound and outbound format above, including interruptions, and `auto_hang_up` ended live calls. `examples/bot.py` ran with real Deepgram and Gemini against a simulated Vobiz stream, not on a phone call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
 
-DTMF digits sent through the Vobiz REST API did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
+DTMF digits sent through the Vobiz REST API and the `<DTMF>` XML element did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
 
 ## Development
 
