@@ -137,7 +137,7 @@ For recording, transfers and a dashboard, see [Vobiz-X-Pipecat](https://github.c
 
 Tested with Pipecat v1.15.0. This package ran on real phone calls in every inbound and outbound format above, with Gemini STT, LLM and TTS and with Gemini Live, including interruptions and `auto_hang_up`. `examples/bot.py` ran on a real μ-law call. Unit tests run against Pipecat 1.12.0 and 1.15.0, on Python 3.11 to 3.13.
 
-DTMF digits sent through the Vobiz REST API and the `<DTMF>` XML element did not reach the stream in testing, so treat `InputDTMFFrame` as unverified.
+DTMF is not supported: digits pressed during a call do not reach the stream.
 
 ## Development
 

@@ -17,7 +17,6 @@ from pipecat.frames.frames import (
     CancelFrame,
     EndFrame,
     InputAudioRawFrame,
-    InputDTMFFrame,
     InterruptionFrame,
     OutputAudioRawFrame,
     OutputTransportMessageUrgentFrame,
@@ -222,20 +221,12 @@ class TestDeserialize(unittest.IsolatedAsyncioTestCase):
                 frame = await serializer.deserialize(_media(b"\x10\x00" * (size // 2)))
                 self.assertEqual((frame.sample_rate, len(frame.audio)), (rate, size))
 
-    async def test_dtmf_digit_becomes_input_dtmf(self):
-        serializer = await self._serializer()
-        frame = await serializer.deserialize(json.dumps({"event": "dtmf", "dtmf": {"digit": "5"}}))
-        self.assertIsInstance(frame, InputDTMFFrame)
-        self.assertEqual(frame.button.value, "5")
-
     async def test_invalid_messages_are_ignored_not_raised(self):
         serializer = await self._serializer()
         for message in (
             "not json",
             '{"foo": "bar"}',
             '{"event": "media", "media": {}}',
-            '{"event": "dtmf", "dtmf": {"digit": "x"}}',
-            '{"event": "dtmf", "dtmf": {}}',
             '{"event": "playedStream", "name": "response-3"}',
             json.dumps({"event": "clearedAudio", "streamId": STREAM_ID}),
         ):

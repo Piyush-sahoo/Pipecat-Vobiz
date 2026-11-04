@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Removed
+
+- `dtmf` event handling. Digits pressed during a call do not reach the stream.
+
 ## [0.1.1] - 2026-11-04
 
 ### Changed
