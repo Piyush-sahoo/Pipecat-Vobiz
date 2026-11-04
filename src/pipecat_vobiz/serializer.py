@@ -1,0 +1,335 @@
+#
+# Copyright (c) 2024-2026, Daily
+# Copyright (c) 2026, Vobiz
+#
+# SPDX-License-Identifier: BSD 2-Clause License
+#
+
+"""Vobiz WebSocket frame serializer for audio streaming."""
+
+import array
+import base64
+import json
+import sys
+from typing import Any, cast
+
+from loguru import logger
+from pipecat.audio.dtmf.types import KeypadEntry
+from pipecat.audio.utils import create_stream_resampler, pcm_to_ulaw, ulaw_to_pcm
+from pipecat.frames.frames import (
+    AudioRawFrame,
+    CancelFrame,
+    EndFrame,
+    Frame,
+    InputAudioRawFrame,
+    InputDTMFFrame,
+    InterruptionFrame,
+    OutputTransportMessageFrame,
+    OutputTransportMessageUrgentFrame,
+)
+from pipecat.processors.frame_processor import FrameProcessorSetup
+from pipecat.serializers.base_serializer import FrameSerializer
+
+ENCODING_MULAW = "audio/x-mulaw"
+ENCODING_L16 = "audio/x-l16"
+
+# The formats Vobiz supports for inbound <Stream> audio.
+SUPPORTED_FORMATS = frozenset({(ENCODING_MULAW, 8000), (ENCODING_L16, 8000), (ENCODING_L16, 16000)})
+
+
+async def parse_vobiz_start(websocket: Any) -> dict[str, Any]:
+    """Read the Vobiz ``start`` event from an accepted WebSocket.
+
+    Call this once, before the transport starts reading the socket. It keeps the
+    ``mediaFormat`` that ``pipecat.runner.utils.parse_telephony_websocket`` drops,
+    which is needed when the stream does not use 8 kHz μ-law.
+
+    Args:
+        websocket: An accepted Starlette or FastAPI WebSocket.
+
+    Returns:
+        A dict with ``stream_id``, ``call_id``, ``encoding`` and ``sample_rate``.
+
+    Raises:
+        ValueError: If the first message is not a valid ``start`` event.
+    """
+    data = await websocket.receive_text()
+    try:
+        message = json.loads(data)
+    except json.JSONDecodeError as e:
+        raise ValueError(f"First Vobiz message is not JSON: {data}") from e
+
+    start = message.get("start") if isinstance(message, dict) else None
+    if not isinstance(start, dict) or message.get("event") != "start" or not start.get("streamId"):
+        raise ValueError(f"First Vobiz message is not a start event: {data}")
+
+    media_format = start.get("mediaFormat") or {}
+    return {
+        "stream_id": start["streamId"],
+        "call_id": start.get("callId"),
+        "encoding": media_format.get("encoding", ENCODING_MULAW),
+        "sample_rate": int(media_format.get("sampleRate", 8000)),
+    }
+
+
+class VobizFrameSerializer(FrameSerializer):
+    """Serializer for Vobiz Audio Streaming WebSocket protocol.
+
+    This serializer handles converting between Pipecat frames and Vobiz's WebSocket
+    audio streaming protocol. It supports audio conversion, DTMF events, and automatic
+    call termination.
+
+    When auto_hang_up is enabled (default), the serializer will automatically terminate
+    the Vobiz call when an EndFrame or CancelFrame is processed, but requires Vobiz
+    credentials to be provided.
+    """
+
+    class InputParams(FrameSerializer.InputParams):
+        """Configuration parameters for VobizFrameSerializer.
+
+        Parameters:
+            vobiz_sample_rate: Sample rate used by Vobiz, defaults to 8000 Hz. μ-law
+                supports 8000 Hz and L16 supports 8000 and 16000 Hz.
+            sample_rate: Optional override for pipeline input sample rate.
+            encoding: Wire encoding, ``audio/x-mulaw`` (default) or ``audio/x-l16``.
+                Must match the ``contentType`` set on the ``<Stream>`` element.
+            l16_byte_order: Byte order of L16 audio on the wire, ``le`` (default) or ``be``.
+            auto_hang_up: Whether to automatically terminate call on EndFrame.
+            ignore_rtvi_messages: Inherited from base FrameSerializer, defaults to True.
+        """
+
+        vobiz_sample_rate: int = 8000
+        sample_rate: int | None = None
+        encoding: str = ENCODING_MULAW
+        l16_byte_order: str = "le"
+        auto_hang_up: bool = True
+
+    def __init__(
+        self,
+        stream_id: str,
+        call_id: str | None = None,
+        auth_id: str | None = None,
+        auth_token: str | None = None,
+        params: InputParams | None = None,
+    ):
+        """Initialize the VobizFrameSerializer.
+
+        Args:
+            stream_id: The Vobiz Stream ID.
+            call_id: The associated Vobiz Call ID (optional, but required for auto hang-up).
+            auth_id: Vobiz auth ID (required for auto hang-up).
+            auth_token: Vobiz auth token (required for auto hang-up).
+            params: Configuration parameters.
+        """
+        params = params or VobizFrameSerializer.InputParams()
+        super().__init__(params)
+        self._params: VobizFrameSerializer.InputParams = params
+
+        if (self._params.encoding, self._params.vobiz_sample_rate) not in SUPPORTED_FORMATS:
+            raise ValueError(
+                f"Unsupported Vobiz audio format: {self._params.encoding} at "
+                f"{self._params.vobiz_sample_rate} Hz"
+            )
+        if self._params.l16_byte_order not in ("le", "be"):
+            raise ValueError(f"Invalid l16_byte_order: {self._params.l16_byte_order}")
+
+        # Validate hangup-related parameters if auto_hang_up is enabled
+        if self._params.auto_hang_up:
+            missing_credentials = []
+            if not call_id:
+                missing_credentials.append("call_id")
+            if not auth_id:
+                missing_credentials.append("auth_id")
+            if not auth_token:
+                missing_credentials.append("auth_token")
+
+            if missing_credentials:
+                raise ValueError(
+                    "auto_hang_up is enabled but missing required parameters: "
+                    f"{', '.join(missing_credentials)}"
+                )
+
+        self._stream_id = stream_id
+        self._call_id = call_id
+        self._auth_id = auth_id
+        self._auth_token = auth_token
+
+        self._vobiz_sample_rate = self._params.vobiz_sample_rate
+        self._encoding = self._params.encoding
+        self._swap_l16 = self._params.l16_byte_order != (
+            "le" if sys.byteorder == "little" else "be"
+        )
+        self._sample_rate = 0  # Pipeline input rate
+
+        self._input_resampler = create_stream_resampler(
+            clear_after_secs=self._params.resampler_clear_after_secs
+        )
+        self._output_resampler = create_stream_resampler(
+            clear_after_secs=self._params.resampler_clear_after_secs
+        )
+        self._hangup_attempted = False
+
+    async def setup(self, setup: FrameProcessorSetup):
+        """Sets up the serializer with pipeline configuration.
+
+        Args:
+            setup: Configuration object containing setup parameters.
+        """
+        self._sample_rate = self._params.sample_rate or setup.audio_in_sample_rate
+
+    async def serialize(self, frame: Frame) -> str | bytes | None:
+        """Serializes a Pipecat frame to Vobiz WebSocket format.
+
+        Handles conversion of various frame types to Vobiz WebSocket messages.
+        For EndFrames, initiates call termination if auto_hang_up is enabled.
+
+        Args:
+            frame: The Pipecat frame to serialize.
+
+        Returns:
+            Serialized data as string or bytes, or None if the frame isn't handled.
+        """
+        if (
+            self._params.auto_hang_up
+            and not self._hangup_attempted
+            and isinstance(frame, (EndFrame, CancelFrame))
+        ):
+            self._hangup_attempted = True
+            await self._hang_up_call()
+            return None
+        elif isinstance(frame, InterruptionFrame):
+            answer = {"event": "clearAudio", "streamId": self._stream_id}
+            return json.dumps(answer)
+        elif isinstance(frame, AudioRawFrame):
+            data = frame.audio
+
+            # Output: Convert PCM at frame's rate to Vobiz's wire format
+            if self._encoding == ENCODING_MULAW:
+                serialized_data = await pcm_to_ulaw(
+                    data, frame.sample_rate, self._vobiz_sample_rate, self._output_resampler
+                )
+            else:
+                serialized_data = await self._output_resampler.resample(
+                    data, frame.sample_rate, self._vobiz_sample_rate
+                )
+                serialized_data = self._to_or_from_wire_l16(serialized_data)
+            if serialized_data is None or len(serialized_data) == 0:
+                # Ignoring in case we don't have audio
+                return None
+
+            payload = base64.b64encode(serialized_data).decode("utf-8")
+            answer = {
+                "event": "playAudio",
+                "media": {
+                    "contentType": self._encoding,
+                    "sampleRate": self._vobiz_sample_rate,
+                    "payload": payload,
+                },
+                "streamId": self._stream_id,
+            }
+
+            return json.dumps(answer)
+        elif isinstance(frame, (OutputTransportMessageFrame, OutputTransportMessageUrgentFrame)):
+            if self.should_ignore_frame(frame):
+                return None
+            return json.dumps(frame.message)
+
+        # Return None for unhandled frames
+        return None
+
+    def _to_or_from_wire_l16(self, data: bytes | None) -> bytes | None:
+        """Swap 16-bit samples between native and wire byte order when they differ."""
+        if not data or not self._swap_l16:
+            return data
+        samples = array.array("h", data)
+        samples.byteswap()
+        return samples.tobytes()
+
+    async def _hang_up_call(self):
+        """Hang up the Vobiz call using Vobiz's REST API."""
+        try:
+            import aiohttp
+
+            # __init__ guarantees these are non-None whenever auto_hang_up is True,
+            # which is the only path that reaches this method.
+            auth_id = cast(str, self._auth_id)
+            auth_token = cast(str, self._auth_token)
+            call_id = cast(str, self._call_id)
+
+            # Vobiz API endpoint for hanging up calls
+            endpoint = f"https://api.vobiz.ai/api/v1/Account/{auth_id}/Call/{call_id}/"
+
+            headers = {"X-Auth-ID": auth_id, "X-Auth-Token": auth_token}
+
+            # Make the DELETE request to hang up the call
+            async with aiohttp.ClientSession() as session:
+                async with session.delete(endpoint, headers=headers) as response:
+                    if response.status == 204:  # Vobiz returns 204 for successful hangup
+                        logger.debug(f"Successfully terminated Vobiz call {call_id}")
+                    elif response.status == 404:  # Call already ended
+                        logger.debug(f"Vobiz call {call_id} already terminated")
+                    else:
+                        # Get the error details for better debugging
+                        error_text = await response.text()
+                        logger.error(
+                            f"Failed to terminate Vobiz call {call_id}: "
+                            f"Status {response.status}, Response: {error_text}"
+                        )
+
+        except Exception as e:
+            logger.error(f"Failed to hang up Vobiz call: {e}")
+
+    async def deserialize(self, data: str | bytes) -> Frame | None:
+        """Deserializes Vobiz WebSocket data to Pipecat frames.
+
+        Handles conversion of Vobiz media events to appropriate Pipecat frames.
+
+        Args:
+            data: The raw WebSocket data from Vobiz.
+
+        Returns:
+            A Pipecat frame corresponding to the Vobiz event, or None if unhandled.
+        """
+        try:
+            message = json.loads(data)
+        except json.JSONDecodeError:
+            logger.warning(f"Failed to parse JSON message: {data}")
+            return None
+
+        if message.get("event") == "media":
+            media = message.get("media", {})
+            payload_base64 = media.get("payload")
+
+            if not payload_base64:
+                return None
+
+            payload = base64.b64decode(payload_base64)
+
+            # Input: Convert Vobiz's wire format to PCM at pipeline input rate
+            if self._encoding == ENCODING_MULAW:
+                deserialized_data = await ulaw_to_pcm(
+                    payload, self._vobiz_sample_rate, self._sample_rate, self._input_resampler
+                )
+            else:
+                deserialized_data = await self._input_resampler.resample(
+                    self._to_or_from_wire_l16(payload), self._vobiz_sample_rate, self._sample_rate
+                )
+            if deserialized_data is None or len(deserialized_data) == 0:
+                # Ignoring in case we don't have audio
+                return None
+
+            audio_frame = InputAudioRawFrame(
+                audio=deserialized_data, num_channels=1, sample_rate=self._sample_rate
+            )
+            return audio_frame
+        elif message.get("event") == "dtmf":
+            digit = message.get("dtmf", {}).get("digit")
+
+            try:
+                return InputDTMFFrame(KeypadEntry(digit))
+            except ValueError:
+                # Handle case where string doesn't match any enum value
+                logger.warning(f"Invalid DTMF digit received: {digit}")
+                return None
+        else:
+            return None

@@ -4,31 +4,42 @@ build-backend = "hatchling.build"
 
 [project]
 name = "pipecat-vobiz"
-version = "0.0.3"
-description = "Vobiz telephony integration for Pipecat"
+version = "0.1.0"
+description = "Vobiz telephony serializer for Pipecat"
 readme = "README.md"
-authors = [
-    { name = "Piyush Sahoo" }
-]
-license = { text = "BSD-2-Clause" }
+authors = [{ name = "Vobiz", email = "support@vobiz.ai" }]
+license = "BSD-2-Clause"
+license-files = ["LICENSE"]
+keywords = ["vobiz", "pipecat", "voice", "telephony", "websocket", "sip", "serializer"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Communications :: Telephony",
 ]
-dependencies = [
-    "pipecat-ai>=0.0.80",
-    "aiohttp>=3.8.0",
-]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
+dependencies = ["pipecat-ai>=1.12.0,<2", "aiohttp>=3.8.0"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.8"]
+example = ["pipecat-ai[deepgram,google,silero,websocket]>=1.12.0,<2", "python-dotenv", "uvicorn"]
 
 [project.urls]
-Homepage = "https://github.com/Piyush-sahoo/Pipecat-Vobiz"
+Homepage = "https://www.vobiz.ai/docs/integrations/pipecat"
 Repository = "https://github.com/Piyush-sahoo/Pipecat-Vobiz"
+Issues = "https://github.com/Piyush-sahoo/Pipecat-Vobiz/issues"
+Changelog = "https://github.com/Piyush-sahoo/Pipecat-Vobiz/blob/main/CHANGELOG.md"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/pipecat"]
+packages = ["src/pipecat_vobiz", "src/pipecat"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
