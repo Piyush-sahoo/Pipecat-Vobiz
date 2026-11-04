@@ -26,9 +26,9 @@ from pipecat.processors.aggregators.llm_response_universal import (
     LLMContextAggregatorPair,
     LLMUserAggregatorParams,
 )
-from pipecat.services.deepgram.stt import DeepgramSTTService
-from pipecat.services.deepgram.tts import DeepgramTTSService
+from pipecat.services.google.gemini_live.stt import GeminiSTTService
 from pipecat.services.google.llm import GoogleLLMService
+from pipecat.services.google.tts import GeminiTTSService
 from pipecat.transports.websocket.fastapi import FastAPIWebsocketParams, FastAPIWebsocketTransport
 from pipecat.workers.runner import WorkerRunner
 
@@ -102,15 +102,18 @@ async def run_bot(websocket: WebSocket, start: dict) -> None:
         ),
     )
 
-    stt = DeepgramSTTService(api_key=os.environ["DEEPGRAM_API_KEY"])
+    stt = GeminiSTTService(api_key=os.environ["GOOGLE_API_KEY"])
     llm = GoogleLLMService(
         api_key=os.environ["GOOGLE_API_KEY"],
         model=os.getenv("GEMINI_MODEL"),
         system_instruction=SYSTEM_INSTRUCTION,
     )
-    tts = DeepgramTTSService(
-        api_key=os.environ["DEEPGRAM_API_KEY"],
-        voice=os.getenv("DEEPGRAM_VOICE", "aura-2-thalia-en"),
+    tts = GeminiTTSService(
+        api_key=os.environ["GOOGLE_API_KEY"],
+        settings=GeminiTTSService.Settings(
+            model=os.getenv("GEMINI_TTS_MODEL", "gemini-3.8-flash-lite-tts"),
+            voice="Kore",
+        ),
     )
 
     context = LLMContext()
@@ -132,7 +135,8 @@ async def run_bot(websocket: WebSocket, start: dict) -> None:
     )
     worker = PipelineWorker(
         pipeline,
-        params=PipelineParams(audio_in_sample_rate=sample_rate, audio_out_sample_rate=sample_rate),
+        # Gemini TTS produces 24 kHz. The serializer converts it to the call's format.
+        params=PipelineParams(audio_in_sample_rate=sample_rate, audio_out_sample_rate=24000),
     )
     runner = WorkerRunner(handle_sigint=False)
     await runner.add_workers(worker)
